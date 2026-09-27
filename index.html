@@ -914,7 +914,7 @@
     <div id="importToast" class="import-toast"></div>
 
     <script>
-        const storageKey = "chatSimpleData_v16";
+        const storageKey = "chatSimpleData_v17";
         let data = JSON.parse(localStorage.getItem(storageKey)) || {
             chat: [], cards: [], emojis: [],
             taName: "哥哥", myAvatar: "", taAvatar: "",
@@ -1733,16 +1733,32 @@
             return data.emojis[Math.floor(Math.random() * data.emojis.length)];
         }
 
-        // ========== 合并回复：防抖 ==========
-        let sendDebounceTimer = null;
-        const SEND_DEBOUNCE_MS = 1500;
+        // ========== 合并回复：可靠版 ==========
+        // 逻辑：每次发送消息，都确保有一个待处理的定时器；
+        // 如果已有定时器，就更新为最新时间（延迟回复）；
+        // 同时加一个兜底，超过 3 秒还没触发，强制触发。
+        let replyTimer = null;
+        let replyDeadline = 0;
 
-        function triggerReply() {
-            if (sendDebounceTimer) clearTimeout(sendDebounceTimer);
-            sendDebounceTimer = setTimeout(() => {
-                sendDebounceTimer = null;
+        function scheduleReply() {
+            const now = Date.now();
+            // 如果已有定时器，并且距离上次触发还没超过 3 秒，就重置
+            // 如果已经超过 3 秒，说明定时器可能丢了，强制触发一次
+            if (replyTimer) {
+                if (now - replyDeadline < 3000) {
+                    clearTimeout(replyTimer);
+                } else {
+                    // 兜底：之前定时器已经超时，强制触发一次
+                    clearTimeout(replyTimer);
+                    replyTimer = null;
+                    doReply();
+                }
+            }
+            replyDeadline = now;
+            replyTimer = setTimeout(() => {
+                replyTimer = null;
                 doReply();
-            }, SEND_DEBOUNCE_MS);
+            }, 1500);
         }
 
         function doReply() {
@@ -1752,7 +1768,6 @@
                 return;
             }
 
-            // 最少/最多回复条数
             let minCount = Math.max(1, Math.min(10, Number(data.minReplyCount) || 1));
             let maxCount = Math.max(1, Math.min(10, Number(data.maxReplyCount) || 1));
             if (maxCount < minCount) maxCount = minCount;
@@ -1789,7 +1804,7 @@
             updateTaNameDisplay(false);
             data.chat.push({ type: "me", text: msg });
             txtInput.value = ""; renderChat(); save();
-            triggerReply();
+            scheduleReply();
         }
 
         sendBtn.onclick = sendMessage;
